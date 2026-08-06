@@ -124,7 +124,8 @@
         </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 py-12 lg:py-20 flex flex-col items-center">
+    <!-- 主体区域宽度收束到 max-w-5xl (适应单列更优雅) -->
+    <div class="max-w-5xl mx-auto px-4 py-12 lg:py-20 flex flex-col items-center">
         
         <!-- 时间与问候语组件 -->
         <div class="text-center mb-10 animate-fade-in">
@@ -162,12 +163,12 @@
             </form>
         </div>
 
-        <!-- 导航卡片网格 (重构为纯动态容器) -->
-        <div id="main-nav-grid" class="w-full grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8 relative z-10 items-start">
+        <!-- 导航卡片网格 (重构为单列流式垂直布局) -->
+        <div id="main-nav-grid" class="w-full flex flex-col gap-6 mb-8 relative z-10">
             <!-- 动态生成的区域将插入到这里 -->
 
             <!-- 添加动态分类按钮 (管理员可见) -->
-            <div id="add-section-card" class="admin-only glass-card rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/50 transition-all border-dashed border-2 border-slate-500/30 xl:col-span-1" onclick="addCustomSection()" style="min-height: 180px;">
+            <div id="add-section-card" class="admin-only glass-card rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/50 transition-all border-dashed border-2 border-slate-500/30 w-full" onclick="addCustomSection()" style="min-height: 100px;">
                 <i class="fas fa-plus text-3xl text-slate-400 mb-2"></i>
                 <span class="text-sm font-medium text-slate-400 mt-1" data-i18n="addSectionBtn">添加自定义区域</span>
             </div>
@@ -180,6 +181,7 @@
                     <h3 class="text-base font-semibold text-emerald-400 flex items-center"><i class="fas fa-handshake mr-2.5"></i> <span data-i18n="cardFriend">友情链接</span></h3>
                     <button type="button" onclick="openLinkModal('friend')" class="admin-only text-xs px-2.5 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-600/40 transition-colors cursor-pointer z-[50]" data-i18n="addLocal">添加 (本地)</button>
                 </div>
+                <!-- 友情链接本身已经是响应式多列 -->
                 <div id="friend-links-container" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3"></div>
             </div>
         </div>
@@ -442,7 +444,6 @@
                     { id: "sec_dev", title: t('defDev'), links: [] },
                     { id: "sec_custom", title: t('defCustom'), links: [] }
                 ];
-                // 仅保存到本地，不立刻强刷云端，以免未部署 API 导致报错
                 localStorage.setItem('nav_dynamic_sections', JSON.stringify(cloudConfig.dynamicSections));
             }
 
@@ -490,7 +491,7 @@
             updateCloudConfig('wallpaper', "");
         }
 
-        // --- 4. 动态自定义区域管理 (合并全部内容渲染) ---
+        // --- 4. 动态自定义区域管理 (单列响应式布局渲染) ---
         function saveDynamicSections(sections) {
             localStorage.setItem('nav_dynamic_sections', JSON.stringify(sections));
             updateCloudConfig('dynamicSections', sections);
@@ -528,7 +529,6 @@
         }
 
         function renderDynamicSections() {
-            // 清理已有的区域
             document.querySelectorAll('.dynamic-section-card').forEach(el => el.remove());
             const grid = document.getElementById('main-nav-grid');
             const addBtnCard = document.getElementById('add-section-card');
@@ -537,21 +537,23 @@
             secs.forEach((sec) => {
                 const isExpanded = !!expandedDynamicSections[sec.id];
                 const linkCount = sec.links.length;
-                const isCompact = linkCount > 6;
 
-                let gridCols = isCompact ? 'grid-cols-3 gap-2' : 'grid-cols-2 gap-3';
+                // 核心变化：移除原先死板的判定，直接使用全面响应式网格列类名
+                let gridCols = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3';
                 let visibleLinks = sec.links;
                 let showExpandBtn = false;
 
-                if (linkCount > 9) {
+                // 优化折叠阈值：由于单行变宽能放下更多，折叠阈值提升至 12 (即大屏幕默认展示两行)
+                if (linkCount > 12) {
                     showExpandBtn = true;
                     if (!isExpanded) {
-                        visibleLinks = sec.links.slice(0, 9);
+                        visibleLinks = sec.links.slice(0, 12);
                     }
                 }
 
                 const card = document.createElement('div');
-                card.className = "dynamic-section-card glass-card rounded-2xl p-6 shadow-xl hover:border-indigo-500/30 transition-all duration-300 relative xl:col-span-1";
+                // 确保卡片自身占据全宽 w-full
+                card.className = "dynamic-section-card glass-card rounded-2xl p-6 shadow-xl hover:border-indigo-500/30 transition-all duration-300 relative w-full";
                 card.id = `section-${sec.id}`;
                 card.draggable = true;
                 card.ondragstart = (e) => handleDragStart(e, 'section', sec.id);
@@ -563,18 +565,18 @@
                 if (linkCount === 0) {
                     linksHtml = `<div class="col-span-full text-center text-xs text-slate-400/60 py-4">${t('noCloudLinks')}</div>`;
                 } else {
-                    const pClass = isCompact ? 'p-2' : 'p-3';
-                    const spaceXClass = isCompact ? 'space-x-1.5' : 'space-x-2.5';
-                    const iconSizeClass = isCompact ? 'w-4 h-4 text-[9px]' : 'w-5 h-5 text-[10px]';
-                    const imgSizeClass = isCompact ? 'w-4 h-4' : 'w-5 h-5';
-                    const textSizeClass = isCompact ? 'text-[11px]' : 'text-sm';
-                    const prClass = isCompact ? 'pr-4' : 'pr-5';
-                    const dragMrClass = isCompact ? 'mr-1.5' : 'mr-2.5';
-                    const btnClass = isCompact ? 'right-1 text-[10px] px-1 py-0.5' : 'right-2 text-xs p-1';
+                    // 全局统一舒适的排版参数
+                    const pClass = 'p-3';
+                    const spaceXClass = 'space-x-2.5';
+                    const iconSizeClass = 'w-5 h-5 text-[10px]';
+                    const imgSizeClass = 'w-5 h-5';
+                    const textSizeClass = 'text-sm';
+                    const prClass = 'pr-5';
+                    const dragMrClass = 'mr-2.5';
+                    const btnClass = 'right-2 text-xs p-1';
 
                     visibleLinks.forEach((link, idx) => {
                         const displayName = link.name;
-                        // 优化后的图标加载降级逻辑
                         const letterHtml = `<div class="${iconSizeClass} rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold shrink-0">${displayName.charAt(0).toUpperCase()}</div>`;
                         let iconHtml = letterHtml;
                         
@@ -610,7 +612,7 @@
                 if (showExpandBtn) {
                     const btnText = isExpanded
                         ? `<span data-i18n="collapseMore">${t('collapseMore')}</span> <i class="fas fa-chevron-up text-[10px]"></i>`
-                        : `<span data-i18n="expandMore">${t('expandMore')}</span> (${linkCount - 9}) <i class="fas fa-chevron-down text-[10px]"></i>`;
+                        : `<span data-i18n="expandMore">${t('expandMore')}</span> (${linkCount - 12}) <i class="fas fa-chevron-down text-[10px]"></i>`;
                     expandHtml = `
                         <div class="mt-4 pt-2 border-t border-slate-500/10 text-center">
                             <button type="button" onclick="toggleDynamicSectionExpand('${sec.id}')" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer inline-flex items-center gap-1">
@@ -653,7 +655,7 @@
             }
         }
 
-        // --- 5. 智能时间与问候语系统 (代码格式化优化) ---
+        // --- 5. 智能时间与问候语系统 ---
         const sTermNames = ["小寒", "大寒", "立春", "雨水", "惊蛰", "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露", "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至"];
         const sTermInfo = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
         
@@ -705,7 +707,7 @@
         }
         setInterval(updateClockAndGreeting, 1000);
 
-        // --- 6. 多语言智能天气定位 (增加健壮性与防限流) ---
+        // --- 6. 多语言智能天气定位 ---
         let weatherState = { city: "Earth", temp: 26, code: 0, fetched: false };
         
         async function fetchWeather() {
@@ -821,13 +823,11 @@
             if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
 
             if (currentModalTarget === 'friend') {
-                // 保存到友情链接（本地存储）
                 let links = JSON.parse(localStorage.getItem('nav_friend_links') || '[]'); 
                 links.push({ name, url }); 
                 localStorage.setItem('nav_friend_links', JSON.stringify(links)); 
                 loadFriendLinks();
             } else if (currentModalTarget.startsWith('section_')) {
-                // 保存到对应的动态分类
                 const secId = currentModalTarget.replace('section_', ''); 
                 let secs = cloudConfig.dynamicSections || []; 
                 const sec = secs.find(s => s.id === secId);
