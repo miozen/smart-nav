@@ -81,6 +81,9 @@
 </head>
 <body class="theme-dark font-sans antialiased selection:bg-indigo-500 selection:text-white">
 
+    <!-- 动态原生星空背景 (Canvas) -->
+    <canvas id="starfield" class="fixed inset-0 w-full h-full pointer-events-none z-[-2] transition-opacity duration-700 opacity-100"></canvas>
+
     <!-- 个性化设置浮窗 -->
     <div class="fixed top-5 right-5 z-[150] relative">
         <button aria-label="个性化设置" onclick="toggleThemeMenu(event)" class="w-10 h-10 rounded-xl glass-card flex items-center justify-center text-slate-400 hover:text-indigo-500 hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer" title="个性化设置">
@@ -213,7 +216,57 @@
     </div>
 
     <script>
-        // --- 0. 全局状态与配置 ---
+        // --- 0. 全局动态星空渲染 (Canvas) ---
+        function initStarfield() {
+            const canvas = document.getElementById('starfield');
+            const ctx = canvas.getContext('2d');
+            let w = canvas.width = window.innerWidth;
+            let h = canvas.height = window.innerHeight;
+            
+            const stars = [];
+            // 初始化星空粒子
+            for (let i = 0; i < 180; i++) {
+                stars.push({
+                    x: Math.random() * w,
+                    y: Math.random() * h,
+                    r: Math.random() * 1.5 + 0.5,
+                    dx: (Math.random() - 0.5) * 0.15,
+                    dy: (Math.random() - 0.5) * 0.15 - 0.05 // 略微向上漂浮
+                });
+            }
+            
+            function draw() {
+                ctx.clearRect(0, 0, w, h);
+                // 根据当前的日间/夜间模式改变星星的颜色，确保都能看清
+                const isLight = document.body.classList.contains('theme-light');
+                ctx.fillStyle = isLight ? 'rgba(15, 23, 42, 0.3)' : 'rgba(255, 255, 255, 0.6)';
+                
+                stars.forEach(star => {
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+                    ctx.fill();
+                    star.x += star.dx;
+                    star.y += star.dy;
+                    
+                    // 无缝循环
+                    if (star.x < 0) star.x = w;
+                    if (star.x > w) star.x = 0;
+                    if (star.y < 0) star.y = h;
+                    if (star.y > h) star.y = 0;
+                });
+                requestAnimationFrame(draw);
+            }
+            draw();
+            
+            // 响应窗口大小变化
+            window.addEventListener('resize', () => {
+                w = canvas.width = window.innerWidth;
+                h = canvas.height = window.innerHeight;
+            });
+        }
+        initStarfield();
+
+        // --- 1. 全局状态与配置 ---
         let currentLang = localStorage.getItem('nav_lang') || 'zh';
         let expandedDynamicSections = {}; 
         let currentModalTarget = 'friend'; 
@@ -281,7 +334,7 @@
             loadFriendLinks();
         }
 
-        // --- 1. 管理员鉴权 ---
+        // --- 2. 管理员鉴权 ---
         function checkAdminSession() {
             const isAdmin = localStorage.getItem('nav_admin_auth') === 'true';
             if (isAdmin) { 
@@ -335,7 +388,7 @@
             }
         }
 
-        // --- 2. 拖拽核心控制逻辑 ---
+        // --- 3. 拖拽核心控制逻辑 ---
         function handleDragStart(e, type, secId, linkIdx = null) {
             e.stopPropagation(); 
             if (localStorage.getItem('nav_admin_auth') !== 'true') { e.preventDefault(); return; }
@@ -394,13 +447,12 @@
             saveDynamicSections(secs);
         }
 
-        // --- 3. 云端调度与预设初始化 ---
+        // --- 4. 云端调度与预设初始化 ---
         async function initCloudData() {
             const savedTheme = localStorage.getItem('nav_theme_mode') || 'theme-dark';
             document.body.classList.remove('theme-light', 'theme-dark'); 
             document.body.classList.add(savedTheme);
             
-            const globalDefaultBg = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop"; 
             let savedBg = localStorage.getItem('nav_custom_wallpaper');
             
             // 尝试读取本地缓存
@@ -437,7 +489,6 @@
                 console.warn("未能连接云端 API，将使用本地缓存", e);
             }
 
-            // 【核心优化点】：如果数据为空，注入默认动态分类骨架
             if (!cloudConfig.dynamicSections || cloudConfig.dynamicSections.length === 0) {
                 cloudConfig.dynamicSections = [
                     { id: "sec_rec", title: t('defRec'), links: [] },
@@ -447,11 +498,13 @@
                 localStorage.setItem('nav_dynamic_sections', JSON.stringify(cloudConfig.dynamicSections));
             }
 
-            if (!savedBg && !document.body.classList.contains('bg-cleared')) savedBg = globalDefaultBg; 
-            if (savedBg) { 
+            if (savedBg && !document.body.classList.contains('bg-cleared')) { 
                 applyWallpaperStyles(savedBg); 
                 document.getElementById('custom-bg-input').value = savedBg; 
                 document.getElementById('clear-bg-btn').classList.remove('hidden'); 
+            } else {
+                // 如果没有自定义壁纸，确保星空是可见的
+                document.getElementById('starfield').style.opacity = '1';
             }
             renderDynamicSections();
         }
@@ -467,7 +520,17 @@
 
         function toggleThemeMenu(e) { e.stopPropagation(); document.getElementById('theme-panel').classList.toggle('hidden'); }
         function setBaseTheme(themeName) { document.body.classList.remove('theme-light', 'theme-dark'); document.body.classList.add(themeName); localStorage.setItem('nav_theme_mode', themeName); document.getElementById('theme-panel').classList.add('hidden'); }
-        function applyWallpaperStyles(url) { document.body.style.backgroundImage = `url('${url}')`; document.body.style.backgroundPosition = 'center'; document.body.style.backgroundSize = 'cover'; document.body.style.backgroundRepeat = 'no-repeat'; document.body.style.backgroundAttachment = 'fixed'; document.body.classList.add('has-custom-bg'); }
+        
+        function applyWallpaperStyles(url) { 
+            document.body.style.backgroundImage = `url('${url}')`; 
+            document.body.style.backgroundPosition = 'center'; 
+            document.body.style.backgroundSize = 'cover'; 
+            document.body.style.backgroundRepeat = 'no-repeat'; 
+            document.body.style.backgroundAttachment = 'fixed'; 
+            document.body.classList.add('has-custom-bg'); 
+            // 启用自定义壁纸时，淡出隐藏星空背景
+            document.getElementById('starfield').style.opacity = '0';
+        }
 
         async function applyCustomBg() {
             const url = document.getElementById('custom-bg-input').value.trim();
@@ -489,9 +552,11 @@
             document.getElementById('clear-bg-btn').classList.add('hidden'); 
             document.getElementById('theme-panel').classList.add('hidden');
             updateCloudConfig('wallpaper', "");
+            // 清除自定义壁纸后，淡入恢复星空背景
+            document.getElementById('starfield').style.opacity = '1';
         }
 
-        // --- 4. 动态自定义区域管理 (单列响应式布局渲染) ---
+        // --- 5. 动态自定义区域管理 ---
         function saveDynamicSections(sections) {
             localStorage.setItem('nav_dynamic_sections', JSON.stringify(sections));
             updateCloudConfig('dynamicSections', sections);
@@ -538,21 +603,19 @@
                 const isExpanded = !!expandedDynamicSections[sec.id];
                 const linkCount = sec.links.length;
 
-                // 核心变化：移除原先死板的判定，直接使用全面响应式网格列类名
+                // 移除原有的 6 列，最大列数设为 5 列
                 let gridCols = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3';
                 let visibleLinks = sec.links;
                 let showExpandBtn = false;
 
-                // 优化折叠阈值：由于单行变宽能放下更多，折叠阈值提升至 12 (即大屏幕默认展示两行)
-                if (linkCount > 12) {
+                if (linkCount > 10) { // 由于改回了 5 列，折叠阈值相应设为 10
                     showExpandBtn = true;
                     if (!isExpanded) {
-                        visibleLinks = sec.links.slice(0, 12);
+                        visibleLinks = sec.links.slice(0, 10);
                     }
                 }
 
                 const card = document.createElement('div');
-                // 确保卡片自身占据全宽 w-full
                 card.className = "dynamic-section-card glass-card rounded-2xl p-6 shadow-xl hover:border-indigo-500/30 transition-all duration-300 relative w-full";
                 card.id = `section-${sec.id}`;
                 card.draggable = true;
@@ -565,7 +628,6 @@
                 if (linkCount === 0) {
                     linksHtml = `<div class="col-span-full text-center text-xs text-slate-400/60 py-4">${t('noCloudLinks')}</div>`;
                 } else {
-                    // 全局统一舒适的排版参数
                     const pClass = 'p-3';
                     const spaceXClass = 'space-x-2.5';
                     const iconSizeClass = 'w-5 h-5 text-[10px]';
@@ -612,7 +674,7 @@
                 if (showExpandBtn) {
                     const btnText = isExpanded
                         ? `<span data-i18n="collapseMore">${t('collapseMore')}</span> <i class="fas fa-chevron-up text-[10px]"></i>`
-                        : `<span data-i18n="expandMore">${t('expandMore')}</span> (${linkCount - 12}) <i class="fas fa-chevron-down text-[10px]"></i>`;
+                        : `<span data-i18n="expandMore">${t('expandMore')}</span> (${linkCount - 10}) <i class="fas fa-chevron-down text-[10px]"></i>`;
                     expandHtml = `
                         <div class="mt-4 pt-2 border-t border-slate-500/10 text-center">
                             <button type="button" onclick="toggleDynamicSectionExpand('${sec.id}')" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer inline-flex items-center gap-1">
@@ -655,7 +717,7 @@
             }
         }
 
-        // --- 5. 智能时间与问候语系统 ---
+        // --- 6. 智能时间与问候语系统 ---
         const sTermNames = ["小寒", "大寒", "立春", "雨水", "惊蛰", "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露", "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至"];
         const sTermInfo = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
         
@@ -707,7 +769,7 @@
         }
         setInterval(updateClockAndGreeting, 1000);
 
-        // --- 6. 多语言智能天气定位 ---
+        // --- 7. 多语言智能天气定位 ---
         let weatherState = { city: "Earth", temp: 26, code: 0, fetched: false };
         
         async function fetchWeather() {
@@ -763,7 +825,7 @@
             el.innerHTML = `<i class="fas ${icon}"></i> <span>${displayCity} · ${t(descKey)} ${weatherState.temp}°C</span>`;
         }
 
-        // --- 7. 搜索引擎配置 ---
+        // --- 8. 搜索引擎配置 ---
         const engines = { 
             google: { action: 'https://www.google.com/search', name: 'q', placeholderKey: 'searchGoogle', icon: 'fab fa-google text-blue-400' }, 
             bing: { action: 'https://cn.bing.com/search', name: 'q', placeholderKey: 'searchBing', icon: 'fab fa-microsoft text-teal-400' }, 
@@ -787,7 +849,7 @@
             document.getElementById('engine-menu').classList.add('hidden'); 
         }
 
-        // --- 8. 统一弹窗与链接保存逻辑 ---
+        // --- 9. 统一弹窗与链接保存逻辑 ---
         function openLinkModal(target) { 
             currentModalTarget = target; 
             const textEl = document.getElementById('modal-title-text'); 
