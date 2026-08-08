@@ -790,10 +790,10 @@
                 let visibleLinks = sec.links;
                 let showExpandBtn = false;
 
-                if (linkCount > 10) {
+                if (linkCount > 25) {
                     showExpandBtn = true;
                     if (!isExpanded) {
-                        visibleLinks = sec.links.slice(0, 10);
+                        visibleLinks = sec.links.slice(0, 25);
                     }
                 }
 
