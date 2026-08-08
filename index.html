@@ -351,7 +351,8 @@
             <div class="glass-card rounded-2xl p-6 shadow-xl hover:border-emerald-500/20 transition-all duration-300">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-base font-semibold text-emerald-400 flex items-center"><i class="fas fa-handshake mr-2.5"></i> <span data-i18n="cardFriend">友情链接</span></h3>
-                    <button type="button" onclick="openLinkModal('friend')" class="admin-only text-xs px-2.5 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-600/40 transition-colors cursor-pointer z-[50]" data-i18n="addLocal">添加 (本地)</button>
+                    <!-- 文本已修改为“添加 (云端)” -->
+                    <button type="button" onclick="openLinkModal('friend')" class="admin-only text-xs px-2.5 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-600/40 transition-colors cursor-pointer z-[50]" data-i18n="addCloud">添加 (云端)</button>
                 </div>
                 <div id="friend-links-container" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3"></div>
             </div>
@@ -436,7 +437,8 @@
         let currentModalTarget = 'friend'; 
         let currentEngineKey = 'google';
         
-        let cloudConfig = { wallpaper: "", dynamicSections: [], adminPwd: "" };
+        // 【关键更新】状态池加入 friendLinks 字段
+        let cloudConfig = { wallpaper: "", dynamicSections: [], adminPwd: "", friendLinks: [] };
 
         let dragType = null; 
         let dragSecId = null; 
@@ -622,7 +624,12 @@
             
             let savedBg = localStorage.getItem('nav_custom_wallpaper');
             let localSections = JSON.parse(localStorage.getItem('nav_dynamic_sections') || '[]');
+            
+            // 【关键更新】读取本地缓存的友情链接
+            let localFriendLinks = JSON.parse(localStorage.getItem('nav_friend_links') || '[]');
+            
             cloudConfig.dynamicSections = localSections;
+            cloudConfig.friendLinks = localFriendLinks;
             
             try {
                 const res = await fetch('/api/config');
@@ -643,6 +650,11 @@
                         if (configData.dynamicSections) { 
                             cloudConfig.dynamicSections = configData.dynamicSections; 
                             localStorage.setItem('nav_dynamic_sections', JSON.stringify(cloudConfig.dynamicSections)); 
+                        }
+                        // 【关键更新】同步云端的友情链接
+                        if (configData.friendLinks) {
+                            cloudConfig.friendLinks = configData.friendLinks;
+                            localStorage.setItem('nav_friend_links', JSON.stringify(cloudConfig.friendLinks));
                         }
                         if (configData.adminPwd) { 
                             cloudConfig.adminPwd = configData.adminPwd; 
@@ -670,6 +682,7 @@
                 document.getElementById('starfield').style.opacity = '1';
             }
             renderDynamicSections();
+            loadFriendLinks();
         }
 
         // 统一注入 Authorization 头并处理异常反馈
@@ -772,11 +785,6 @@
             saveDynamicSections(secs);
         }
 
-        function toggleDynamicSectionExpand(secId) {
-            expandedDynamicSections[secId] = !expandedDynamicSections[secId];
-            renderDynamicSections();
-        }
-
         function renderDynamicSections() {
             document.querySelectorAll('.dynamic-section-card').forEach(el => el.remove());
             const grid = document.getElementById('main-nav-grid');
@@ -784,18 +792,11 @@
             let secs = cloudConfig.dynamicSections || [];
 
             secs.forEach((sec) => {
-                const isExpanded = !!expandedDynamicSections[sec.id];
                 const linkCount = sec.links.length;
                 let gridCols = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3';
+                
+                // 【关键更新】已移除 >10 就折叠的限制逻辑，永远完全平铺展示
                 let visibleLinks = sec.links;
-                let showExpandBtn = false;
-
-                if (linkCount > 25) {
-                    showExpandBtn = true;
-                    if (!isExpanded) {
-                        visibleLinks = sec.links.slice(0, 25);
-                    }
-                }
 
                 const card = document.createElement('div');
                 card.className = "dynamic-section-card glass-card rounded-2xl p-6 shadow-xl hover:border-indigo-500/30 transition-all duration-300 relative w-full";
@@ -852,20 +853,6 @@
                     });
                 }
 
-                let expandHtml = '';
-                if (showExpandBtn) {
-                    const btnText = isExpanded
-                        ? `<span data-i18n="collapseMore">${t('collapseMore')}</span> <i class="fas fa-chevron-up text-[10px]"></i>`
-                        : `<span data-i18n="expandMore">${t('expandMore')}</span> (${linkCount - 10}) <i class="fas fa-chevron-down text-[10px]"></i>`;
-                    expandHtml = `
-                        <div class="mt-4 pt-2 border-t border-slate-500/10 text-center">
-                            <button type="button" onclick="toggleDynamicSectionExpand('${sec.id}')" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer inline-flex items-center gap-1">
-                                ${btnText}
-                            </button>
-                        </div>
-                    `;
-                }
-
                 card.innerHTML = `
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-lg font-semibold text-indigo-400 flex items-center cursor-move" title="长按拖拽排序" style="cursor: grab;">
@@ -881,7 +868,6 @@
                     <div class="grid ${gridCols}" style="min-height: 40px;" ondragover="handleDragOver(event, 'section')" ondrop="handleDrop(event, 'section', '${sec.id}')">
                         ${linksHtml}
                     </div>
-                    ${expandHtml}
                 `;
                 grid.insertBefore(card, addBtnCard);
             });
@@ -1081,11 +1067,14 @@
                 return alert(currentLang === 'zh' ? '请完整填写有效的名称和网址！' : 'Please enter a valid name and URL!');
             }
 
+            // 【关键更新】保存友情链接时，更新云端状态池并同步
             if (currentModalTarget === 'friend') {
-                let links = JSON.parse(localStorage.getItem('nav_friend_links') || '[]'); 
+                let links = cloudConfig.friendLinks || []; 
                 links.push({ name, url }); 
+                cloudConfig.friendLinks = links;
                 localStorage.setItem('nav_friend_links', JSON.stringify(links)); 
                 loadFriendLinks();
+                await updateCloudConfig('friendLinks', links);
             } else if (currentModalTarget.startsWith('section_')) {
                 const secId = currentModalTarget.replace('section_', ''); 
                 let secs = cloudConfig.dynamicSections || []; 
@@ -1098,10 +1087,10 @@
             toggleModal(false); 
         }
 
+        // 【关键更新】渲染友情链接时优先使用云端状态池的数据
         function loadFriendLinks() {
             const container = document.getElementById('friend-links-container'); 
-            let linksStr = localStorage.getItem('nav_friend_links'); 
-            let links = linksStr ? JSON.parse(linksStr) : []; 
+            let links = cloudConfig.friendLinks || []; 
             container.innerHTML = ''; 
             
             if (links.length === 0) {
@@ -1118,15 +1107,17 @@
             });
         }
         
-        function deleteFriendLink(e, index) { 
+        // 【关键更新】删除友情链接时，更新云端状态池并同步
+        async function deleteFriendLink(e, index) { 
             e.preventDefault(); e.stopPropagation(); 
-            let linksStr = localStorage.getItem('nav_friend_links'); 
-            let links = linksStr ? JSON.parse(linksStr) : []; 
+            let links = cloudConfig.friendLinks || [];
             if (links.length > 0) { 
                 links.splice(index, 1); 
+                cloudConfig.friendLinks = links;
                 localStorage.setItem('nav_friend_links', JSON.stringify(links)); 
+                loadFriendLinks();
+                await updateCloudConfig('friendLinks', links);
             } 
-            loadFriendLinks(); 
         }
 
         // --- 10. 初始化与键盘快捷键 ---
