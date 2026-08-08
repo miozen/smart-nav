@@ -78,7 +78,6 @@
             display: none !important;
         }
 
-        /* Polished skin: keep the app simple, make it calmer and more durable. */
         :root {
             --mio-accent: #8b5cf6;
             --mio-accent-2: #14b8a6;
@@ -299,7 +298,7 @@
         </div>
     </div>
 
-    <!-- 主体区域宽度收束到 max-w-5xl (适应单列更优雅) -->
+    <!-- 主体区域 -->
     <div class="max-w-5xl mx-auto px-4 py-12 lg:py-20 flex flex-col items-center">
         
         <!-- 时间与问候语组件 -->
@@ -338,10 +337,8 @@
             </form>
         </div>
 
-        <!-- 导航卡片网格 (重构为单列流式垂直布局) -->
+        <!-- 导航卡片网格 -->
         <div id="main-nav-grid" class="w-full flex flex-col gap-6 mb-8 relative z-10">
-            <!-- 动态生成的区域将插入到这里 -->
-
             <!-- 添加动态分类按钮 (管理员可见) -->
             <div id="add-section-card" class="admin-only glass-card rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/50 transition-all border-dashed border-2 border-slate-500/30 w-full" onclick="addCustomSection()" style="min-height: 100px;">
                 <i class="fas fa-plus text-3xl text-slate-400 mb-2"></i>
@@ -356,7 +353,6 @@
                     <h3 class="text-base font-semibold text-emerald-400 flex items-center"><i class="fas fa-handshake mr-2.5"></i> <span data-i18n="cardFriend">友情链接</span></h3>
                     <button type="button" onclick="openLinkModal('friend')" class="admin-only text-xs px-2.5 py-1 bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-600/40 transition-colors cursor-pointer z-[50]" data-i18n="addLocal">添加 (本地)</button>
                 </div>
-                <!-- 友情链接本身已经是响应式多列 -->
                 <div id="friend-links-container" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3"></div>
             </div>
         </div>
@@ -396,20 +392,18 @@
             let h = canvas.height = window.innerHeight;
             
             const stars = [];
-            // 初始化星空粒子
             for (let i = 0; i < 180; i++) {
                 stars.push({
                     x: Math.random() * w,
                     y: Math.random() * h,
                     r: Math.random() * 1.5 + 0.5,
                     dx: (Math.random() - 0.5) * 0.15,
-                    dy: (Math.random() - 0.5) * 0.15 - 0.05 // 略微向上漂浮
+                    dy: (Math.random() - 0.5) * 0.15 - 0.05
                 });
             }
             
             function draw() {
                 ctx.clearRect(0, 0, w, h);
-                // 根据当前的日间/夜间模式改变星星的颜色，确保都能看清
                 const isLight = document.body.classList.contains('theme-light');
                 ctx.fillStyle = isLight ? 'rgba(15, 23, 42, 0.3)' : 'rgba(255, 255, 255, 0.6)';
                 
@@ -420,7 +414,6 @@
                     star.x += star.dx;
                     star.y += star.dy;
                     
-                    // 无缝循环
                     if (star.x < 0) star.x = w;
                     if (star.x > w) star.x = 0;
                     if (star.y < 0) star.y = h;
@@ -430,7 +423,6 @@
             }
             draw();
             
-            // 响应窗口大小变化
             window.addEventListener('resize', () => {
                 w = canvas.width = window.innerWidth;
                 h = canvas.height = window.innerHeight;
@@ -438,7 +430,7 @@
         }
         initStarfield();
 
-        // --- 1. 全局状态与配置 ---
+        // --- 1. 全局状态与多语言 ---
         let currentLang = localStorage.getItem('nav_lang') || 'zh';
         let expandedDynamicSections = {}; 
         let currentModalTarget = 'friend'; 
@@ -490,7 +482,7 @@
         function setLanguage(lang) {
             currentLang = lang; 
             localStorage.setItem('nav_lang', lang); 
-            document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+            document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'; 
             applyLanguage(); 
             updateClockAndGreeting(); 
             renderWeather(); 
@@ -506,7 +498,7 @@
             loadFriendLinks();
         }
 
-        // --- 2. 管理员鉴权 ---
+        // --- 2. 管理员鉴权与会话管理 ---
         function checkAdminSession() {
             const isAdmin = localStorage.getItem('nav_admin_auth') === 'true';
             if (isAdmin) { 
@@ -528,8 +520,9 @@
             
             const currentValidPwd = cloudConfig.adminPwd || "admin888";
             
-            if (pwd === currentValidPwd) { 
+            if (pwd.trim() === currentValidPwd) { 
                 localStorage.setItem('nav_admin_auth', 'true'); 
+                localStorage.setItem('nav_admin_token', pwd.trim()); // 持久化 Token 供请求头使用
                 alert(t('pwdSuccess')); 
                 checkAdminSession(); 
             } else { 
@@ -539,6 +532,7 @@
         
         function logoutAdmin() {
             localStorage.removeItem('nav_admin_auth'); 
+            localStorage.removeItem('nav_admin_token');
             alert(t('logoutMsg'));
             expandedDynamicSections = {}; 
             checkAdminSession(); 
@@ -548,19 +542,22 @@
         async function updateAdminPwd() {
             const newPwd = document.getElementById('custom-pwd-input').value.trim();
             if (!newPwd) return;
+            
+            const oldPwd = cloudConfig.adminPwd;
             cloudConfig.adminPwd = newPwd;
             document.getElementById('custom-pwd-input').value = '';
             document.getElementById('theme-panel').classList.add('hidden');
             
-            try { 
-                await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cloudConfig) }); 
+            const success = await updateCloudConfig('adminPwd', newPwd);
+            if (success) {
+                localStorage.setItem('nav_admin_token', newPwd);
                 alert(t('pwdUpdateSuccess'));
-            } catch (e) { 
-                console.error("云端密码同步失败", e); 
+            } else {
+                cloudConfig.adminPwd = oldPwd; // 回滚
             }
         }
 
-        // --- 3. 拖拽核心控制逻辑 ---
+        // --- 3. 拖拽排序逻辑 ---
         function handleDragStart(e, type, secId, linkIdx = null) {
             e.stopPropagation(); 
             if (localStorage.getItem('nav_admin_auth') !== 'true') { e.preventDefault(); return; }
@@ -594,7 +591,7 @@
                 if (dragSecId === targetSecId) return;
                 const fromIdx = secs.findIndex(s => s.id === dragSecId);
                 const toIdx = secs.findIndex(s => s.id === targetSecId);
-                if(fromIdx > -1 && toIdx > -1) {
+                if (fromIdx > -1 && toIdx > -1) {
                     const [moved] = secs.splice(fromIdx, 1);
                     secs.splice(toIdx, 0, moved);
                 }
@@ -603,18 +600,16 @@
                 const fromSec = secs.find(s => s.id === dragSecId);
                 const toSec = secs.find(s => s.id === targetSecId);
                 if (fromSec && toSec) {
-                    let actualTargetIdx = targetLinkIdx;
                     const [movedLink] = fromSec.links.splice(dragLinkIdx, 1);
-                    toSec.links.splice(actualTargetIdx, 0, movedLink);
+                    toSec.links.splice(targetLinkIdx, 0, movedLink);
                 }
             } else if (dragType === 'link' && type === 'section') {
-                 const fromSec = secs.find(s => s.id === dragSecId);
-                 const toSec = secs.find(s => s.id === targetSecId);
-                 if (fromSec && toSec) {
-                     if (fromSec === toSec) return; 
-                     const [movedLink] = fromSec.links.splice(dragLinkIdx, 1);
-                     toSec.links.push(movedLink);
-                 }
+                const fromSec = secs.find(s => s.id === dragSecId);
+                const toSec = secs.find(s => s.id === targetSecId);
+                if (fromSec && toSec && fromSec !== toSec) {
+                    const [movedLink] = fromSec.links.splice(dragLinkIdx, 1);
+                    toSec.links.push(movedLink);
+                }
             }
             saveDynamicSections(secs);
         }
@@ -626,13 +621,10 @@
             document.body.classList.add(savedTheme);
             
             let savedBg = localStorage.getItem('nav_custom_wallpaper');
-            
-            // 尝试读取本地缓存
             let localSections = JSON.parse(localStorage.getItem('nav_dynamic_sections') || '[]');
             cloudConfig.dynamicSections = localSections;
             
             try {
-                // 请求云端统一接口
                 const res = await fetch('/api/config');
                 if (res.ok) {
                     const configData = await res.json();
@@ -658,7 +650,7 @@
                     }
                 }
             } catch (e) {
-                console.warn("未能连接云端 API，将使用本地缓存", e);
+                console.warn("未能连接云端 API，使用本地缓存", e);
             }
 
             if (!cloudConfig.dynamicSections || cloudConfig.dynamicSections.length === 0) {
@@ -675,18 +667,40 @@
                 document.getElementById('custom-bg-input').value = savedBg; 
                 document.getElementById('clear-bg-btn').classList.remove('hidden'); 
             } else {
-                // 如果没有自定义壁纸，确保星空是可见的
                 document.getElementById('starfield').style.opacity = '1';
             }
             renderDynamicSections();
         }
 
+        // 统一注入 Authorization 头并处理异常反馈
         async function updateCloudConfig(key, value) {
             cloudConfig[key] = value;
+            const token = localStorage.getItem('nav_admin_token') || 'admin888';
+            
             try { 
-                await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cloudConfig) }); 
-            } catch (e) {
+                const res = await fetch('/api/config', { 
+                    method: 'POST', 
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }, 
+                    body: JSON.stringify(cloudConfig) 
+                });
+
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        alert("保存失败：鉴权未通过，请重新登录管理模式！");
+                        logoutAdmin();
+                    } else {
+                        alert(`保存失败：服务端异常 (${res.status})`);
+                    }
+                    return false;
+                }
+                return true;
+            } catch (e) { 
                 console.error("云端同步失败", e);
+                alert("网络异常，无法连接云端！");
+                return false;
             }
         }
 
@@ -700,7 +714,6 @@
             document.body.style.backgroundRepeat = 'no-repeat'; 
             document.body.style.backgroundAttachment = 'fixed'; 
             document.body.classList.add('has-custom-bg'); 
-            // 启用自定义壁纸时，淡出隐藏星空背景
             document.getElementById('starfield').style.opacity = '0';
         }
 
@@ -711,8 +724,8 @@
             localStorage.setItem('nav_custom_wallpaper', url); 
             document.body.classList.remove('bg-cleared'); 
             document.getElementById('clear-bg-btn').classList.remove('hidden'); 
-            document.getElementById('theme-panel').classList.add('hidden');
-            updateCloudConfig('wallpaper', url);
+            document.getElementById('theme-panel').classList.add('hidden'); 
+            await updateCloudConfig('wallpaper', url);
         }
 
         async function clearCustomBg() {
@@ -722,17 +735,16 @@
             document.body.classList.add('bg-cleared'); 
             document.getElementById('custom-bg-input').value = ''; 
             document.getElementById('clear-bg-btn').classList.add('hidden'); 
-            document.getElementById('theme-panel').classList.add('hidden');
-            updateCloudConfig('wallpaper', "");
-            // 清除自定义壁纸后，淡入恢复星空背景
+            document.getElementById('theme-panel').classList.add('hidden'); 
+            await updateCloudConfig('wallpaper', "");
             document.getElementById('starfield').style.opacity = '1';
         }
 
         // --- 5. 动态自定义区域管理 ---
-        function saveDynamicSections(sections) {
+        async function saveDynamicSections(sections) {
             localStorage.setItem('nav_dynamic_sections', JSON.stringify(sections));
-            updateCloudConfig('dynamicSections', sections);
             renderDynamicSections();
+            await updateCloudConfig('dynamicSections', sections);
         }
 
         function addCustomSection() {
@@ -746,15 +758,15 @@
         function renameCustomSection(id) {
             let secs = cloudConfig.dynamicSections || [];
             const sec = secs.find(s => s.id === id);
-            if(!sec) return;
+            if (!sec) return;
             const newTitle = prompt(t('renameSectionPrompt'), sec.title);
-            if(!newTitle || newTitle.trim() === '' || newTitle === sec.title) return;
+            if (!newTitle || newTitle.trim() === '' || newTitle === sec.title) return;
             sec.title = newTitle.trim();
             saveDynamicSections(secs);
         }
 
         function deleteCustomSection(id) {
-            if(!confirm(t('delSectionConfirm'))) return;
+            if (!confirm(t('delSectionConfirm'))) return;
             let secs = cloudConfig.dynamicSections || [];
             secs = secs.filter(s => s.id !== id);
             saveDynamicSections(secs);
@@ -774,13 +786,11 @@
             secs.forEach((sec) => {
                 const isExpanded = !!expandedDynamicSections[sec.id];
                 const linkCount = sec.links.length;
-
-                // 移除原有的 6 列，最大列数设为 5 列
                 let gridCols = 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3';
                 let visibleLinks = sec.links;
                 let showExpandBtn = false;
 
-                if (linkCount > 10) { // 由于改回了 5 列，折叠阈值相应设为 10
+                if (linkCount > 10) {
                     showExpandBtn = true;
                     if (!isExpanded) {
                         visibleLinks = sec.links.slice(0, 10);
@@ -815,14 +825,14 @@
                         let iconHtml = letterHtml;
                         
                         try { 
-                            if(link.url) {
+                            if (link.url) {
                                 const hostname = new URL(link.url).hostname;
                                 iconHtml = `
                                     <img src="https://unavatar.io/duckduckgo/${hostname}" draggable="false" class="${imgSizeClass} rounded object-contain shrink-0" alt="icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                                     <div style="display:none;" class="${iconSizeClass} rounded-full bg-indigo-500/20 text-indigo-400 items-center justify-center font-bold shrink-0">${displayName.charAt(0).toUpperCase()}</div>
                                 `;
                             } 
-                        } catch(e) {}
+                        } catch (e) {}
 
                         linksHtml += `
                         <div class="group relative flex items-center justify-between ${pClass} bg-slate-500/5 border border-slate-500/10 rounded-xl hover:bg-indigo-600/10 transition-all"
@@ -883,13 +893,13 @@
             e.stopPropagation();
             let secs = cloudConfig.dynamicSections || [];
             const sec = secs.find(s => s.id === secId);
-            if(sec) { 
+            if (sec) { 
                 sec.links.splice(linkIdx, 1); 
                 saveDynamicSections(secs); 
             }
         }
 
-        // --- 6. 智能时间与问候语系统 ---
+        // --- 6. 智能时间与问候语 ---
         const sTermNames = ["小寒", "大寒", "立春", "雨水", "惊蛰", "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露", "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至"];
         const sTermInfo = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
         
@@ -941,30 +951,30 @@
         }
         setInterval(updateClockAndGreeting, 1000);
 
-        // --- 7. 多语言智能天气定位 ---
+        // --- 7. 天气系统 ---
         let weatherState = { city: "Earth", temp: 26, code: 0, fetched: false };
         
         async function fetchWeather() {
             try { 
                 const ipRes = await fetch('https://ipapi.co/json/'); 
-                if(!ipRes.ok) throw new Error("Location API rate limited or failed."); 
+                if (!ipRes.ok) throw new Error("Location API rate limited or failed."); 
                 
                 const ipData = await ipRes.json(); 
                 const { latitude, longitude, city } = ipData; 
-                if(!latitude || !longitude) throw new Error("Missing coordinates.");
+                if (!latitude || !longitude) throw new Error("Missing coordinates.");
                 
                 const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`); 
-                if(!weatherRes.ok) throw new Error("Weather API failed.");
+                if (!weatherRes.ok) throw new Error("Weather API failed.");
                 
-                const weatherData = await weatherRes.json();
+                const weatherData = await weatherRes.json(); 
                 weatherState = { 
                     city: city || "Earth", 
                     temp: Math.round(weatherData.current_weather.temperature), 
                     code: weatherData.current_weather.weathercode, 
                     fetched: true 
-                };
+                }; 
             } catch (e) { 
-                console.warn("Weather fetching gracefully degraded:", e.message);
+                console.warn("Weather fetching gracefully degraded:", e.message); 
                 weatherState.fetched = false; 
             } 
             renderWeather();
@@ -997,7 +1007,7 @@
             el.innerHTML = `<i class="fas ${icon}"></i> <span>${displayCity} · ${t(descKey)} ${weatherState.temp}°C</span>`;
         }
 
-        // --- 8. 搜索引擎配置 ---
+        // --- 8. 搜索引擎系统 ---
         const engines = { 
             google: { action: 'https://www.google.com/search', name: 'q', placeholderKey: 'searchGoogle', icon: 'fab fa-google text-blue-400' }, 
             bing: { action: 'https://cn.bing.com/search', name: 'q', placeholderKey: 'searchBing', icon: 'fab fa-microsoft text-teal-400' }, 
@@ -1021,12 +1031,12 @@
             document.getElementById('engine-menu').classList.add('hidden'); 
         }
 
-        // --- 9. 统一弹窗与链接保存逻辑 ---
+        // --- 9. 弹窗与链接保存 ---
         function openLinkModal(target) { 
             currentModalTarget = target; 
             const textEl = document.getElementById('modal-title-text'); 
             
-            if(target === 'friend') {
+            if (target === 'friend') {
                 textEl.innerText = t('modalAddFriend'); 
             } else if (target.startsWith('section_')) {
                 textEl.innerText = t('modalAddSection'); 
@@ -1040,21 +1050,36 @@
                 document.getElementById('site-name').value = ''; 
                 document.getElementById('site-url').value = ''; 
                 modal.classList.remove('hidden'); 
+                setTimeout(() => document.getElementById('site-name')?.focus(), 50);
             } else { 
                 modal.classList.add('hidden'); 
             } 
         }
         
         function closeModalOnBlank(e) { 
-            if(e.target.id === 'modal') toggleModal(false); 
+            if (e.target.id === 'modal') toggleModal(false); 
+        }
+
+        function normalizeURL(value) {
+            let url = String(value || '').trim();
+            if (!url) return null;
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            try {
+                const parsed = new URL(url);
+                if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+                return parsed.href;
+            } catch (error) {
+                return null;
+            }
         }
 
         async function saveActiveLink() {
             const name = document.getElementById('site-name').value.trim(); 
-            let url = document.getElementById('site-url').value.trim();
+            const url = normalizeURL(document.getElementById('site-url').value);
             
-            if(!name || !url) return alert(currentLang === 'zh' ? '请完整填写名称和网址！' : 'Please fill in both name and URL!');
-            if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            if (!name || !url) {
+                return alert(currentLang === 'zh' ? '请完整填写有效的名称和网址！' : 'Please enter a valid name and URL!');
+            }
 
             if (currentModalTarget === 'friend') {
                 let links = JSON.parse(localStorage.getItem('nav_friend_links') || '[]'); 
@@ -1065,22 +1090,21 @@
                 const secId = currentModalTarget.replace('section_', ''); 
                 let secs = cloudConfig.dynamicSections || []; 
                 const sec = secs.find(s => s.id === secId);
-                if(sec) { 
+                if (sec) { 
                     sec.links.push({ name, url }); 
-                    saveDynamicSections(secs); 
+                    await saveDynamicSections(secs); 
                 }
             }
-            toggleModal(false);
+            toggleModal(false); 
         }
 
-        // 友情链接加载
         function loadFriendLinks() {
             const container = document.getElementById('friend-links-container'); 
             let linksStr = localStorage.getItem('nav_friend_links'); 
             let links = linksStr ? JSON.parse(linksStr) : []; 
-            container.innerHTML = '';
+            container.innerHTML = ''; 
             
-            if(links.length === 0) {
+            if (links.length === 0) {
                 container.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400/60 py-4">${t('noCloudLinks')}</div>`;
                 return;
             }
@@ -1098,17 +1122,37 @@
             e.preventDefault(); e.stopPropagation(); 
             let linksStr = localStorage.getItem('nav_friend_links'); 
             let links = linksStr ? JSON.parse(linksStr) : []; 
-            if(links.length > 0) {
+            if (links.length > 0) { 
                 links.splice(index, 1); 
                 localStorage.setItem('nav_friend_links', JSON.stringify(links)); 
-            }
+            } 
             loadFriendLinks(); 
         }
 
-        // --- 初始化运转 ---
+        // --- 10. 初始化与键盘快捷键 ---
         document.addEventListener('click', () => { 
             document.getElementById('engine-menu').classList.add('hidden'); 
             document.getElementById('theme-panel').classList.add('hidden'); 
+        });
+
+        document.addEventListener('keydown', event => {
+            const activeTag = document.activeElement?.tagName?.toLowerCase();
+            const isTyping = ['input', 'textarea', 'select'].includes(activeTag);
+
+            if (event.key === 'Escape') {
+                document.getElementById('engine-menu')?.classList.add('hidden');
+                document.getElementById('theme-panel')?.classList.add('hidden');
+                toggleModal(false);
+            }
+
+            if (event.key === '/' && !isTyping) {
+                const searchInput = document.getElementById('search-input');
+                if (searchInput) {
+                    event.preventDefault();
+                    searchInput.focus();
+                    searchInput.select();
+                }
+            }
         });
         
         checkAdminSession(); 
@@ -1117,150 +1161,6 @@
         updateClockAndGreeting(); 
         fetchWeather(); 
         initCloudData();
-
-        (function applyPolishedBehavior() {
-            const searchForm = document.getElementById('search-form');
-            const searchInput = document.getElementById('search-input');
-            const themeBtn = document.querySelector('[onclick="toggleThemeMenu(event)"]');
-            const originalSelectEngine = window.selectEngine || selectEngine;
-
-            function escapeHTML(value) {
-                return String(value ?? '').replace(/[&<>"']/g, char => ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#39;'
-                }[char]));
-            }
-
-            function normalizeURL(value) {
-                let url = String(value || '').trim();
-                if (!url) return null;
-                if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-                try {
-                    const parsed = new URL(url);
-                    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
-                    return parsed.href;
-                } catch (error) {
-                    return null;
-                }
-            }
-
-            window.selectEngine = function polishedSelectEngine(key) {
-                originalSelectEngine(key);
-                localStorage.setItem('nav_search_engine', key);
-            };
-
-            const savedEngine = localStorage.getItem('nav_search_engine');
-            if (savedEngine && engines[savedEngine]) {
-                window.selectEngine(savedEngine);
-            }
-
-            if (searchForm && searchInput) {
-                searchForm.addEventListener('submit', event => {
-                    if (!searchInput.value.trim()) {
-                        event.preventDefault();
-                        searchInput.focus();
-                    }
-                });
-            }
-
-            document.addEventListener('keydown', event => {
-                const activeTag = document.activeElement?.tagName?.toLowerCase();
-                const isTyping = ['input', 'textarea', 'select'].includes(activeTag);
-
-                if (event.key === 'Escape') {
-                    document.getElementById('engine-menu')?.classList.add('hidden');
-                    document.getElementById('theme-panel')?.classList.add('hidden');
-                    toggleModal(false);
-                }
-
-                if (event.key === '/' && !isTyping && searchInput) {
-                    event.preventDefault();
-                    searchInput.focus();
-                    searchInput.select();
-                }
-            });
-
-            const originalToggleThemeMenu = window.toggleThemeMenu || toggleThemeMenu;
-            window.toggleThemeMenu = function polishedToggleThemeMenu(event) {
-                originalToggleThemeMenu(event);
-                const panel = document.getElementById('theme-panel');
-                themeBtn?.setAttribute('aria-expanded', String(!panel?.classList.contains('hidden')));
-            };
-
-            const originalToggleModal = window.toggleModal || toggleModal;
-            window.toggleModal = function polishedToggleModal(show) {
-                originalToggleModal(show);
-                if (show) {
-                    setTimeout(() => document.getElementById('site-name')?.focus(), 40);
-                }
-            };
-
-            window.loadFriendLinks = function polishedLoadFriendLinks() {
-                const container = document.getElementById('friend-links-container');
-                let links = [];
-                try {
-                    links = JSON.parse(localStorage.getItem('nav_friend_links') || '[]');
-                } catch (error) {
-                    links = [];
-                }
-
-                container.innerHTML = '';
-                if (!links.length) {
-                    container.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400/60 py-4">${escapeHTML(t('noCloudLinks'))}</div>`;
-                    return;
-                }
-
-                links.forEach((item, index) => {
-                    const safeName = escapeHTML(item.name || '');
-                    const safeURL = normalizeURL(item.url);
-                    if (!safeName || !safeURL) return;
-
-                    container.insertAdjacentHTML('beforeend', `
-                        <div class="group relative flex items-center justify-between p-2.5 bg-slate-500/5 border border-slate-500/10 rounded-xl hover:bg-emerald-600/10 transition-all text-center">
-                            <a href="${safeURL}" draggable="false" target="_blank" rel="noopener noreferrer" class="w-full text-xs font-medium text-slate-400 hover:text-emerald-400 transition-colors truncate px-2">${safeName}</a>
-                            <button type="button" onclick="deleteFriendLink(event, ${index})" class="admin-only absolute right-1 text-[10px] text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-500/10 px-1 rounded cursor-pointer" aria-label="删除链接"><i class="fas fa-times"></i></button>
-                        </div>
-                    `);
-                });
-            };
-
-            window.saveActiveLink = async function polishedSaveActiveLink() {
-                const name = document.getElementById('site-name').value.trim();
-                const url = normalizeURL(document.getElementById('site-url').value);
-
-                if (!name || !url) {
-                    alert(currentLang === 'zh' ? '请填写有效的名称和网址。' : 'Please enter a valid name and URL.');
-                    return;
-                }
-
-                if (currentModalTarget === 'friend') {
-                    let links = [];
-                    try {
-                        links = JSON.parse(localStorage.getItem('nav_friend_links') || '[]');
-                    } catch (error) {
-                        links = [];
-                    }
-                    links.push({ name, url });
-                    localStorage.setItem('nav_friend_links', JSON.stringify(links));
-                    window.loadFriendLinks();
-                } else if (currentModalTarget.startsWith('section_')) {
-                    const secId = currentModalTarget.replace('section_', '');
-                    const secs = cloudConfig.dynamicSections || [];
-                    const sec = secs.find(s => s.id === secId);
-                    if (sec) {
-                        sec.links.push({ name, url });
-                        saveDynamicSections(secs);
-                    }
-                }
-
-                toggleModal(false);
-            };
-
-            window.loadFriendLinks();
-        })();
     </script>
 </body>
 </html>
